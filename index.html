@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CHCC Luncheon — Live Dashboard</title>
+  <title>CHCC Gatherings — Live Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
@@ -31,33 +31,6 @@
       color: var(--text);
       min-height: 100vh;
     }
-
-    /* ── Demo Banner ── */
-    .demo-banner {
-      background: var(--accent);
-      color: var(--bg);
-      text-align: center;
-      padding: 0.5rem;
-      font-weight: 600;
-      font-size: 0.85rem;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 1rem;
-    }
-    .demo-banner:hover { background: #d97706; }
-    .demo-banner .live-btn {
-      background: var(--bg);
-      color: var(--accent);
-      border: none;
-      padding: 0.3rem 1rem;
-      border-radius: 9999px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .demo-banner .live-btn:hover { background: #1a2744; }
 
     /* ── Header ── */
     header {
@@ -362,14 +335,6 @@
         font-size: 0.78rem;
       }
 
-      /* Demo banner */
-      .demo-banner {
-        flex-wrap: wrap;
-        font-size: 0.75rem;
-        padding: 0.4rem 0.5rem;
-        gap: 0.5rem;
-      }
-
       /* Event pill bar */
       .pill-bar { padding: 0.4rem 0.5rem; gap: 0.35rem; }
       .pill-bar button { font-size: 0.75rem; padding: 0.25rem 0.7rem; }
@@ -418,20 +383,15 @@
 </head>
 <body>
 
-  <div class="demo-banner" id="demoBanner">
-    DEMO MODE — Showing sample data from real Chinese heritage churches
-    <button class="live-btn" onclick="switchToLive()">Switch to Live</button>
-  </div>
-
   <header>
-    <h1>CHCC Luncheon — Live Results</h1>
-    <p>SOLA Network &middot; Chinese Heritage Church Leaders Gathering</p>
+    <h1>CHCC Gatherings — Live Results</h1>
+    <p>Chinese Heritage Church Collaborative &middot; 2026 Gatherings Survey</p>
   </header>
 
   <div class="status-bar">
     <div class="status-item">
       <span class="dot" id="statusDot"></span>
-      <span id="statusText">Demo mode</span>
+      <span id="statusText">Connecting...</span>
     </div>
     <div class="status-item">
       Responses: <span class="response-count" id="responseCount">0</span>
@@ -447,7 +407,7 @@
   </div>
 
   <div id="noDataOverlay" style="display:none;position:relative;text-align:center;padding:4rem 1rem;color:#94a3b8;font-size:1.25rem;">
-    No survey data yet for <span id="noDataEvent"></span>.
+    <span id="noDataMessage">No responses yet — waiting for the first submission.</span>
   </div>
   <nav id="mainNav">
     <button class="active" data-panel="overview">Overview</button>
@@ -647,7 +607,8 @@
     let charts = {};
     let refreshInterval = null;
     let rawRows = [];
-    let isLive = false;
+    let lastFetchOk = false;
+    let lastFetchTime = null;
 
     // ── Multi-event filter state ──
     // 'all' | 'SOLA 2026' | 'Midwest 2026' | 'East Coast 2026'
@@ -939,9 +900,13 @@
     function updateDashboard(rows) {
       const overlay = document.getElementById('noDataOverlay');
       const nav = document.getElementById('mainNav');
-      if (!rows.length && currentEvent !== 'all') {
-        document.getElementById('noDataEvent').textContent = currentEvent;
-        document.getElementById('responseCount').textContent = '0 (' + currentEvent + ')';
+      if (!rows.length) {
+        document.getElementById('noDataMessage').textContent =
+          currentEvent === 'all'
+            ? 'No responses yet — waiting for the first submission.'
+            : 'No survey data yet for ' + currentEvent + '.';
+        document.getElementById('responseCount').textContent =
+          currentEvent === 'all' ? '0' : '0 (' + currentEvent + ')';
         overlay.style.display = 'block';
         nav.style.display = 'none';
         document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
@@ -950,7 +915,6 @@
       overlay.style.display = 'none';
       nav.style.display = '';
       document.querySelectorAll('.panel').forEach(p => p.style.display = '');
-      if (!rows.length) return;
 
       const total = rows.length;
       // When a specific event is selected, show count + event name; otherwise show total across all events.
@@ -1099,277 +1063,44 @@
     }
 
     // =========================================================
-    //  GOOGLE SHEET — LIVE MODE
+    //  GOOGLE SHEET — LIVE DATA
     // =========================================================
-    function switchToLive() {
-      isLive = true;
-      document.getElementById('demoBanner').innerHTML = 'LIVE MODE — Connecting to Google Sheet...';
-      document.getElementById('statusText').textContent = 'Connecting...';
-
-      fetchLiveData().then(success => {
-        if (success) {
-          document.getElementById('demoBanner').innerHTML = 'LIVE MODE — Connected to Google Sheet <button class="live-btn" onclick="switchToDemo()">Back to Demo</button>';
-          document.getElementById('statusText').textContent = 'Live';
-          if (refreshInterval) clearInterval(refreshInterval);
-          refreshInterval = setInterval(fetchLiveData, 8000);
-        } else {
-          document.getElementById('demoBanner').innerHTML = 'Could not connect to Google Sheet. <button class="live-btn" onclick="switchToLive()">Retry</button>';
-          document.getElementById('statusText').textContent = 'Connection failed';
-        }
-      });
-    }
-
-    function switchToDemo() {
-      isLive = false;
-      if (refreshInterval) clearInterval(refreshInterval);
-      refreshInterval = null;
-      rawRows = generateDemoData();
-      updateDashboard(filteredRows());
-      document.getElementById('demoBanner').innerHTML = 'DEMO MODE — Showing sample data <button class="live-btn" onclick="switchToLive()">Go Live</button>';
-      document.getElementById('statusText').textContent = 'Demo mode';
-    }
-
     async function fetchLiveData() {
       try {
         const resp = await fetch(ACTIVE_CSV_URL + '&_t=' + Date.now());
-        if (!resp.ok) return false;
+        if (!resp.ok) {
+          handleFetchFailure();
+          return false;
+        }
         const text = await resp.text();
         rawRows = parseCSV(text);
+        lastFetchOk = true;
+        lastFetchTime = new Date();
+        document.getElementById('statusText').textContent = 'Live';
         updateDashboard(filteredRows());
         return true;
       } catch (e) {
         console.error('Fetch error:', e);
+        handleFetchFailure();
         return false;
       }
     }
 
-    // =========================================================
-    //  DEMO DATA
-    // =========================================================
-    function generateDemoData() {
-      const churchData = [
-        ['Chinese Christian Herald Crusades Church', 'New York City', 'NY'],
-        ['Church of Grace to Fujianese', 'New York City', 'NY'],
-        ['New York Chinese Alliance Church', 'New York City', 'NY'],
-        ['Chinese Evangelical Church of New York', 'New York City', 'NY'],
-        ['Oversea Chinese Mission Church', 'New York City', 'NY'],
-        ['First Chinese Baptist Church', 'New York City', 'NY'],
-        ['Boston Chinese Evangelical Church', 'Boston', 'MA'],
-        ['Chinese Bible Church of Greater Boston', 'Lexington', 'MA'],
-        ['Chinese Gospel Church of Massachusetts', 'Acton', 'MA'],
-        ['Chinese Christian Church of New England', 'Milford', 'MA'],
-        ['Chinese Christian Union Church', 'Chicago', 'IL'],
-        ['Chinese Bible Church of Chicago', 'Streamwood', 'IL'],
-        ['Chinese Gospel Church of Chicago', 'Chicago', 'IL'],
-        ['Chinese Christian Church of Greater Washington D.C.', 'Chantilly', 'VA'],
-        ['Chinese Bible Church of Maryland', 'Rockville', 'MD'],
-        ['Chinese Community Church of Washington D.C.', 'Washington', 'DC'],
-        ['Gaithersburg Chinese Alliance Church', 'Gaithersburg', 'MD'],
-        ['Chinese Evangelical Free Church of North Jersey', 'Parsippany', 'NJ'],
-        ['Chinese Christian Church of Princeton', 'Princeton', 'NJ'],
-        ['Chinese Christian Church of San Francisco', 'San Francisco', 'CA'],
-        ['San Francisco Chinese Baptist Church', 'San Francisco', 'CA'],
-        ['First Chinese Baptist Church of Los Angeles', 'Los Angeles', 'CA'],
-        ['Chinese Evangelical Free Church of Los Angeles', 'Monterey Park', 'CA'],
-        ['Chinese Bible Church of San Diego', 'San Diego', 'CA'],
-        ['Cupertino Chinese Alliance Church', 'Cupertino', 'CA'],
-        ['Chinese Church in Christ of Mountain View', 'Mountain View', 'CA'],
-        ['San Gabriel Valley Chinese Christian Church', 'West Covina', 'CA'],
-        ['Ambassadors for Christ Church', 'San Jose', 'CA'],
-        ['Chinese Evangelical Church of Seattle', 'Seattle', 'WA'],
-        ['Eastside Chinese Alliance Church', 'Bellevue', 'WA'],
-        ['Houston Chinese Church', 'Houston', 'TX'],
-        ['Chinese Baptist Church of Austin', 'Austin', 'TX'],
-        ['Dallas Chinese Bible Church', 'Richardson', 'TX'],
-        ['Atlanta Chinese Christian Church', 'Atlanta', 'GA'],
-        ['Chinese Church of Atlanta', 'Duluth', 'GA'],
-        ['First Chinese Baptist Church of Philadelphia', 'Philadelphia', 'PA'],
-        ['Chinese Gospel Church of Philadelphia', 'Cheltenham', 'PA'],
-        ['Chinese Community Church of South Jersey', 'Cherry Hill', 'NJ'],
-        ['Canaan Taiwanese Christian Church', 'San Jose', 'CA'],
-        ['First Chinese Baptist Church of Chicago', 'Chicago', 'IL'],
-      ];
-
-      const roles = [
-        'Senior / Lead Pastor',
-        'English Ministry Pastor',
-        'Associate Pastor/Minister',
-        'Youth Pastor/Minister',
-        'Young Adult Pastor/Minister',
-        'Lay Leader / Elder / Deacon',
-        'Staff (non-pastoral)'
-      ];
-      const roleWeights = [0.12, 0.25, 0.15, 0.12, 0.08, 0.18, 0.10];
-
-      const congSizeOptions = [
-        'Significantly smaller',
-        'Somewhat smaller',
-        'About the same',
-        'Somewhat larger',
-        'Significantly larger',
-        'We are a single-language church'
-      ];
-      const congSizeWeights = [0.22, 0.28, 0.20, 0.12, 0.08, 0.10];
-
-      const staffPropOptions = [
-        'No dedicated English ministry staff (volunteer-led)',
-        'Significantly fewer staff for English',
-        'Somewhat fewer staff for English',
-        'About the same',
-        'Somewhat more staff for English',
-        'Significantly more staff for English',
-        'Not applicable (single-language church)'
-      ];
-      const staffPropWeights = [0.15, 0.30, 0.22, 0.15, 0.05, 0.03, 0.10];
-
-      const ageGroupOptions = [
-        'Children (0-12)',
-        'Teens (13-17)',
-        'College-age (18-22)',
-        'Young adults (23-35)',
-        'Young families',
-        'Middle-aged adults (36-55)',
-        'Older adults (55+)'
-      ];
-
-      const youthRetentionOptions = [
-        'Most continue at a Chinese heritage church',
-        'Most attend a non-Chinese heritage church',
-        'Most step away from church altogether',
-        "It's a mix \u2014 no clear pattern",
-        "I don't know / we don't track this"
-      ];
-      const youthRetentionWeights = [0.12, 0.25, 0.15, 0.30, 0.18];
-
-      const trajectoryOptions = [
-        'Remaining a Chinese heritage church with renewed vision',
-        'Becoming a broader Asian American or pan-Asian church',
-        'Becoming a multiethnic church (moving beyond Asian identity)',
-        'Merging with or being absorbed into another church',
-        'Gradual decline without a clear next chapter',
-        "I genuinely don't know"
-      ];
-      const trajectoryWeights = [0.25, 0.18, 0.15, 0.05, 0.12, 0.25];
-
-      const hopeSourceOptions = [
-        'Growing connections between Chinese heritage church leaders and pastors',
-        'Next-generation leaders stepping into roles',
-        'New models of ministry emerging within Chinese heritage churches',
-        'Gatherings like this one (SOLA, CHCC events)',
-        'Seeing other churches navigate similar transitions well',
-        'A renewed sense of calling in my own ministry',
-        'A growing confidence that Chinese heritage churches have a unique and needed place in God\'s kingdom',
-        'Embracing our calling to the Chinese heritage church while remaining open to where God leads'
-      ];
-
-      function weightedRandom(options, weights) {
-        const r = Math.random();
-        let sum = 0;
-        for (let i = 0; i < weights.length; i++) {
-          sum += weights[i];
-          if (r < sum) return options[i];
-        }
-        return options[options.length - 1];
+    function handleFetchFailure() {
+      if (lastFetchOk && lastFetchTime) {
+        // We have prior data — show stale indicator but keep displaying it.
+        const minsAgo = Math.round((Date.now() - lastFetchTime.getTime()) / 60000);
+        document.getElementById('statusText').textContent =
+          'Stale — last update ' + (minsAgo < 1 ? 'just now' : minsAgo + ' min ago');
+      } else {
+        document.getElementById('statusText').textContent = 'Connection failed — retrying';
       }
-
-      function pickMultiple(options, minPick, maxPick) {
-        const count = minPick + Math.floor(Math.random() * (maxPick - minPick + 1));
-        const shuffled = [...options].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, count).join(', ');
-      }
-
-      const count = 65;
-      const rows = [];
-      const now = new Date();
-
-      for (let i = 0; i < count; i++) {
-        const ci = Math.floor(Math.random() * churchData.length);
-        const church = churchData[ci];
-        const time = new Date(now.getTime() - (count - i) * 30000);
-
-        // Role (sometimes multiple)
-        let role;
-        if (Math.random() < 0.15) {
-          // Two roles
-          const r1 = weightedRandom(roles, roleWeights);
-          let r2 = weightedRandom(roles, roleWeights);
-          while (r2 === r1) r2 = weightedRandom(roles, roleWeights);
-          role = r1 + ', ' + r2;
-        } else {
-          role = weightedRandom(roles, roleWeights);
-        }
-
-        // Languages
-        const langRoll = Math.random();
-        const languages = langRoll < 0.10 ? '1' : langRoll < 0.45 ? '2' : langRoll < 0.82 ? '3' : '4+';
-
-        // Congregation size
-        const congSize = weightedRandom(congSizeOptions, congSizeWeights);
-
-        // Staff proportion (weighted toward fewer staff for English — the gap)
-        const staffProp = weightedRandom(staffPropOptions, staffPropWeights);
-
-        // Age groups (checkbox — 2-4 selections)
-        const ageGroups = pickMultiple(ageGroupOptions, 1, 4);
-
-        // Youth retention
-        const youthRetention = weightedRandom(youthRetentionOptions, youthRetentionWeights);
-
-        // Feelings
-        const lonely = Math.random() < 0.52 ? 'Yes' : 'No';
-        const likeQuitting = Math.random() < 0.30 ? 'Yes' : 'No';
-        const overwhelmed = Math.random() < 0.62 ? 'Yes' : 'No';
-        const affirmed = Math.random() < 0.75 ? 'Yes' : 'No';
-        const cantSpeakOpenly = Math.random() < 0.35 ? 'Yes' : 'No';
-
-        // Hopefulness past (skew toward lower)
-        const hopePastWeights = [0.10, 0.25, 0.35, 0.22, 0.08];
-        const hopePast = weightedRandom(HOPE_LEVELS, hopePastWeights);
-
-        // Hopefulness today (skew toward higher — the shift)
-        const hopeTodayWeights = [0.04, 0.12, 0.28, 0.35, 0.21];
-        const hopeToday = weightedRandom(HOPE_LEVELS, hopeTodayWeights);
-
-        // Trajectory
-        const trajectory = weightedRandom(trajectoryOptions, trajectoryWeights);
-
-        // What gives hope (checkbox — 2-4 selections)
-        const whatGivesHope = pickMultiple(hopeSourceOptions, 2, 4);
-
-        // Build row array matching COL indices
-        const row = [];
-        row[COL.TIMESTAMP] = time.toISOString();
-        row[COL.CHURCH_NAME] = church[0];
-        row[COL.CITY] = church[1];
-        row[COL.STATE] = church[2];
-        row[COL.ROLE] = role;
-        row[COL.LANGUAGES] = languages;
-        row[COL.CONG_SIZE] = congSize;
-        row[COL.STAFF_PROP] = staffProp;
-        row[COL.AGE_GROUPS] = ageGroups;
-        row[COL.YOUTH_RETENTION] = youthRetention;
-        row[COL.LONELY] = lonely;
-        row[COL.LIKE_QUITTING] = likeQuitting;
-        row[COL.OVERWHELMED] = overwhelmed;
-        row[COL.AFFIRMED] = affirmed;
-        row[COL.CANT_SPEAK_OPENLY] = cantSpeakOpenly;
-        row[COL.HOPE_PAST] = hopePast;
-        row[COL.HOPE_TODAY] = hopeToday;
-        row[COL.TRAJECTORY] = trajectory;
-        row[COL.WHAT_GIVES_HOPE] = whatGivesHope;
-
-        rows.push(row);
-      }
-
-      return rows;
     }
 
-    function loadDemoData() {
-      rawRows = generateDemoData();
-      updateDashboard(filteredRows());
-      document.getElementById('statusText').textContent = 'Demo mode';
-      document.getElementById('demoBanner').innerHTML =
-        'DEMO MODE — Showing 65 sample responses from real Chinese heritage churches <button class="live-btn" onclick="switchToLive()">Switch to Live</button>';
+    function startLivePolling() {
+      fetchLiveData();
+      if (refreshInterval) clearInterval(refreshInterval);
+      refreshInterval = setInterval(fetchLiveData, 8000);
     }
 
     // =========================================================
@@ -1377,7 +1108,9 @@
     // =========================================================
     initCharts();
     buildFeelingsCards();
-    loadDemoData();
+    // Render an immediate empty state, then start polling live data.
+    updateDashboard(filteredRows());
+    startLivePolling();
   </script>
 </body>
 </html>
