@@ -400,11 +400,11 @@
   </div>
 
   <div class="pill-bar" id="eventPillBar">
-    <button class="active" data-event="all">All Events</button>
+    <button class="active" data-event="Gen Together 2026">Gen Together 2026</button>
     <button data-event="SOLA 2026">SOLA 2026</button>
     <button data-event="Midwest 2026">Midwest 2026</button>
     <button data-event="East Coast 2026">East Coast 2026</button>
-    <button data-event="Gen Together 2026">Gen Together 2026</button>
+    <button data-event="all">All Events</button>
   </div>
 
   <div id="noDataOverlay" style="display:none;position:relative;text-align:center;padding:4rem 1rem;color:#94a3b8;font-size:1.25rem;">
@@ -670,7 +670,8 @@
 
     // ── Multi-event filter state ──
     // 'all' | 'SOLA 2026' | 'Midwest 2026' | 'East Coast 2026' | 'Gen Together 2026'
-    let currentEvent = 'all';
+    // Defaults to the symposium so the dashboard opens on the Gen Together view.
+    let currentEvent = 'Gen Together 2026';
 
     // Returns the subset of rawRows matching the active event pill.
     // When currentEvent === 'all', returns all rows.
@@ -1303,8 +1304,23 @@
     // =========================================================
     //  INIT
     // =========================================================
+    // Default the active tab to Generations Together to match the default
+    // Gen Together 2026 event. (The static HTML marks Overview active; we flip
+    // it here so the symposium panel is the first paint.) If a later filter has
+    // no symposium rows, updateGenerationsTab() hides this tab and falls back to
+    // Overview automatically, so this is safe.
+    function setActiveTab(panelName) {
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      const btn = document.querySelector('nav button[data-panel="' + panelName + '"]');
+      if (btn) btn.classList.add('active');
+      const panel = document.getElementById('panel-' + panelName);
+      if (panel) panel.classList.add('active');
+    }
+
     initCharts();
     buildFeelingsCards();
+    setActiveTab('generations');
     // Render an immediate empty state, then start polling live data.
     updateDashboard(filteredRows());
     startLivePolling();
