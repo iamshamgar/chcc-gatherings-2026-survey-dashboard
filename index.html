@@ -404,6 +404,7 @@
     <button data-event="SOLA 2026">SOLA 2026</button>
     <button data-event="Midwest 2026">Midwest 2026</button>
     <button data-event="East Coast 2026">East Coast 2026</button>
+    <button data-event="Gen Together 2026">Gen Together 2026</button>
   </div>
 
   <div id="noDataOverlay" style="display:none;position:relative;text-align:center;padding:4rem 1rem;color:#94a3b8;font-size:1.25rem;">
@@ -414,6 +415,7 @@
     <button data-panel="churches">Our Churches</button>
     <button data-panel="feelings">How We're Doing</button>
     <button data-panel="hope">Hope &amp; Future</button>
+    <button data-panel="generations" id="navGenerations">Generations Together</button>
   </nav>
 
   <!-- ══════════════════════════════════════════════════════════ -->
@@ -549,10 +551,58 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!--  TAB 5 — GENERATIONS TOGETHER (symposium-specific)        -->
+  <!--  Only populated by "Gen Together 2026" rows. Degrades to  -->
+  <!--  an empty-state note when the active filter has no         -->
+  <!--  symposium data (e.g. SOLA/Midwest/East Coast).           -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-generations">
+    <div id="genEmptyState" style="display:none;text-align:center;padding:3rem 1rem;color:var(--muted);font-size:1.25rem;">
+      These questions were asked only at the AFC Generations Together 2026 Symposium. Select
+      <strong>Gen Together 2026</strong> (or <strong>All Events</strong>) to see results.
+    </div>
+    <div id="genContent">
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>Sending vs. Handing Over the Wheel</h3>
+          <p class="chart-subtitle">When the next generation is ready to lead, which path best serves the Chinese heritage church?</p>
+          <div class="chart-container tall">
+            <canvas id="chartHandoffPath"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>What We'd Have to Give Up</h3>
+          <p class="chart-subtitle">To give the next generation real leadership, what would your congregation most need to give up?</p>
+          <div class="chart-container tall">
+            <canvas id="chartGiveUp"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card" style="margin-top:1.5rem;">
+        <h3>How Ready Are We for a Generational Handoff?</h3>
+        <p class="chart-subtitle">Readiness for a generational handoff of leadership in the next five years</p>
+        <div class="chart-container">
+          <canvas id="chartHandoffReadiness"></canvas>
+        </div>
+      </div>
+      <div class="church-feed" id="genReflectionsFeed" style="margin-top:1.5rem;max-height:420px;">
+        <h3>What Would It Take to Give Them the Wheel?</h3>
+        <div id="genReflections" style="display:flex;flex-direction:column;gap:0.85rem;"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // =========================================================
     //  CSV COLUMN MAPPING (matches Google Sheet headers exactly)
     // =========================================================
+    // Indices 0–18 are shared across ALL four events.
+    // Index 19 (EVENT) is the event tag — present natively on the combined
+    //   SOLA/Midwest/East Coast sheet, and applied in code to standalone
+    //   symposium rows during ingest (see tagAndPad / fetchSymposiumData).
+    // Indices 20–23 are symposium-only columns; they are empty for the
+    //   other three events so their charts simply show no data.
     const COL = {
       TIMESTAMP: 0,
       CHURCH_NAME: 1,
@@ -572,8 +622,16 @@
       HOPE_PAST: 15,
       HOPE_TODAY: 16,
       TRAJECTORY: 17,
-      WHAT_GIVES_HOPE: 18
+      WHAT_GIVES_HOPE: 18,
+      EVENT: 19,
+      // ── Symposium-specific (Gen Together 2026 only) ──
+      HANDOFF_PATH: 20,       // Q19 — sending vs. handing over the wheel
+      GIVE_UP: 21,            // Q20 — what to give up
+      HANDOFF_READINESS: 22,  // Q21 — readiness for handoff
+      HANDOFF_REFLECTION: 23  // Q22 — free-text reflection
     };
+
+    const SYMPOSIUM_EVENT = 'Gen Together 2026';
 
     // =========================================================
     //  FEELINGS CONFIG
@@ -611,15 +669,15 @@
     let lastFetchTime = null;
 
     // ── Multi-event filter state ──
-    // 'all' | 'SOLA 2026' | 'Midwest 2026' | 'East Coast 2026'
+    // 'all' | 'SOLA 2026' | 'Midwest 2026' | 'East Coast 2026' | 'Gen Together 2026'
     let currentEvent = 'all';
 
     // Returns the subset of rawRows matching the active event pill.
     // When currentEvent === 'all', returns all rows.
-    // Otherwise filters on column index 19 (column T — "Event").
+    // Otherwise filters on the EVENT column (index 19).
     function filteredRows() {
       if (currentEvent === 'all') return rawRows;
-      return rawRows.filter(r => (r[19] || '').replace(/\s+/g, ' ').trim() === currentEvent);
+      return rawRows.filter(r => (r[COL.EVENT] || '').replace(/\s+/g, ' ').trim() === currentEvent);
     }
 
     const LIVE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vStR1ZJjVKV6bsiZ48LgiLeAR-eKpT5ywiP-pZoQL3utQvnBCQGbePpfwHhBxmzxsVAxoeyBZ-vNfBN/pub?gid=151037683&single=true&output=csv';
@@ -633,6 +691,14 @@
     const ACTIVE_CSV_URL = (MULTI_EVENT_CSV_URL && MULTI_EVENT_CSV_URL !== 'REPLACE_WITH_COMBINED_TAB_CSV_URL')
       ? MULTI_EVENT_CSV_URL
       : LIVE_CSV_URL;
+
+    // ── SYMPOSIUM (Gen Together 2026) — standalone sheet ──
+    // ENOCH: After you build the AFC Generations Together 2026 survey form and run
+    //   File → Share → Publish to web → (its tab) → Comma-separated values (.csv),
+    //   paste that published CSV URL between the quotes below, replacing the placeholder.
+    //   That is the ONLY change you need to make here. Until then the dashboard runs
+    //   on the other three events normally and the symposium pill shows an empty state.
+    const SYMPOSIUM_CSV_URL = 'PASTE_GEN_TOGETHER_2026_PUBLISHED_CSV_URL_HERE';
 
     const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a855f7','#06b6d4','#f97316','#ec4899','#14b8a6','#8b5cf6','#ef4444','#10b981','#6366f1','#d946ef'];
 
@@ -871,6 +937,28 @@
         data: { labels: [], datasets: [{ data: [], backgroundColor: '#22c55e' }] },
         options: baseOpts({ indexAxis: 'y', scales: hBarScales(), plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#f1f5f9', font: { weight: 'bold', size: 17 } } } })
       });
+
+      // ── Generations Together (symposium-specific) ──
+      // Handoff path (horizontal bar)
+      charts.handoffPath = new Chart(document.getElementById('chartHandoffPath'), {
+        type: 'bar',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: CHART_COLORS }] },
+        options: baseOpts({ indexAxis: 'y', scales: hBarScales(), plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#f1f5f9', font: { weight: 'bold', size: 17 } } } })
+      });
+
+      // What to give up (horizontal bar)
+      charts.giveUp = new Chart(document.getElementById('chartGiveUp'), {
+        type: 'bar',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: CHART_COLORS }] },
+        options: baseOpts({ indexAxis: 'y', scales: hBarScales(), plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#f1f5f9', font: { weight: 'bold', size: 17 } } } })
+      });
+
+      // Handoff readiness (ordered vertical bar — scale question)
+      charts.handoffReadiness = new Chart(document.getElementById('chartHandoffReadiness'), {
+        type: 'bar',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: HOPE_COLORS_TODAY }] },
+        options: baseOpts({ scales: barScales(), plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#f1f5f9', font: { weight: 'bold', size: 18 } } } })
+      });
     }
 
     // =========================================================
@@ -1038,6 +1126,79 @@
       charts.hopeSources.data.labels = sortedHopeSrc.map(s => truncLabel(s[0], 44));
       charts.hopeSources.data.datasets[0].data = sortedHopeSrc.map(s => s[1]);
       charts.hopeSources.update();
+
+      // ── Generations Together (symposium-specific) ──
+      updateGenerationsTab(rows);
+    }
+
+    // =========================================================
+    //  GENERATIONS TOGETHER TAB (symposium-specific)
+    // =========================================================
+    // Degrades gracefully: when the active row set contains no symposium rows
+    // (e.g. SOLA/Midwest/East Coast filters), shows an empty-state note instead
+    // of blank charts, and hides the nav tab entirely.
+    function updateGenerationsTab(rows) {
+      // Only symposium rows carry the Q19+ answers.
+      const symRows = rows.filter(r =>
+        (r[COL.EVENT] || '').replace(/\s+/g, ' ').trim() === SYMPOSIUM_EVENT);
+
+      const navBtn = document.getElementById('navGenerations');
+      const hasSym = symRows.length > 0;
+      // Hide the tab when there's nothing symposium-specific to show.
+      if (navBtn) navBtn.style.display = hasSym ? '' : 'none';
+
+      const emptyEl = document.getElementById('genEmptyState');
+      const contentEl = document.getElementById('genContent');
+      if (!hasSym) {
+        if (emptyEl) emptyEl.style.display = 'block';
+        if (contentEl) contentEl.style.display = 'none';
+        // If the user was sitting on a now-hidden tab, fall back to Overview.
+        const genPanel = document.getElementById('panel-generations');
+        if (genPanel && genPanel.classList.contains('active') && navBtn && navBtn.style.display === 'none') {
+          document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+          const ovBtn = document.querySelector('nav button[data-panel="overview"]');
+          if (ovBtn) ovBtn.classList.add('active');
+          document.getElementById('panel-overview').classList.add('active');
+        }
+        return;
+      }
+      if (emptyEl) emptyEl.style.display = 'none';
+      if (contentEl) contentEl.style.display = '';
+
+      // Handoff path (single-select)
+      const pathCounts = sortedEntries(countValues(symRows, COL.HANDOFF_PATH));
+      charts.handoffPath.data.labels = pathCounts.map(s => truncLabel(s[0], 42));
+      charts.handoffPath.data.datasets[0].data = pathCounts.map(s => s[1]);
+      charts.handoffPath.data.datasets[0].backgroundColor = pathCounts.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+      charts.handoffPath.update();
+
+      // What to give up (single-select)
+      const giveUpCounts = sortedEntries(countValues(symRows, COL.GIVE_UP));
+      charts.giveUp.data.labels = giveUpCounts.map(s => truncLabel(s[0], 42));
+      charts.giveUp.data.datasets[0].data = giveUpCounts.map(s => s[1]);
+      charts.giveUp.data.datasets[0].backgroundColor = giveUpCounts.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+      charts.giveUp.update();
+
+      // Handoff readiness (ordered scale)
+      const readinessOrder = ['Not ready at all','Slightly ready','Moderately ready','Very ready',"It's already happening"];
+      const readinessCounts = countValues(symRows, COL.HANDOFF_READINESS);
+      charts.handoffReadiness.data.labels = readinessOrder.map(l => truncLabel(l, 18));
+      charts.handoffReadiness.data.datasets[0].data = readinessOrder.map(l => readinessCounts[l] || 0);
+      charts.handoffReadiness.update();
+
+      // Free-text reflections
+      const reflEl = document.getElementById('genReflections');
+      if (reflEl) {
+        const reflections = symRows
+          .map(r => (r[COL.HANDOFF_REFLECTION] || '').trim())
+          .filter(Boolean);
+        reflEl.innerHTML = reflections.length
+          ? reflections.map(t =>
+              `<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.18);border-radius:0.75rem;padding:0.85rem 1.1rem;font-size:1.1rem;line-height:1.45;color:var(--text);">&ldquo;${t.replace(/</g,'&lt;')}&rdquo;</div>`
+            ).join('')
+          : '<p style="color:var(--muted);font-size:1.05rem;">No written reflections yet.</p>';
+      }
     }
 
     function updateOrderedHBar(chart, rows, colIdx, order, color) {
@@ -1065,15 +1226,51 @@
     // =========================================================
     //  GOOGLE SHEET — LIVE DATA
     // =========================================================
+    // True once SYMPOSIUM_CSV_URL has been pointed at a real published sheet.
+    function symposiumConfigured() {
+      return SYMPOSIUM_CSV_URL &&
+             SYMPOSIUM_CSV_URL.indexOf('PASTE_') === -1 &&
+             SYMPOSIUM_CSV_URL.indexOf('http') === 0;
+    }
+
+    // Normalize a standalone symposium row into the shared internal shape:
+    // shared cols 0–18 stay put, the EVENT tag is stamped at index 19, and the
+    // symposium-specific answers (originally at index 19–22 in that sheet) shift
+    // to 20–23 so they line up with the COL constants and never collide with the
+    // EVENT column the other three events use.
+    function normalizeSymposiumRow(r) {
+      const shared = r.slice(0, 19);                 // cols 0–18
+      while (shared.length < 19) shared.push('');     // pad if a row is short
+      const specific = r.slice(19);                   // symposium Q19+ answers
+      const out = shared.concat([SYMPOSIUM_EVENT], specific);
+      while (out.length <= COL.HANDOFF_REFLECTION) out.push('');
+      return out;
+    }
+
+    async function fetchOneCSV(url) {
+      const resp = await fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + '_t=' + Date.now());
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      return parseCSV(await resp.text());
+    }
+
     async function fetchLiveData() {
       try {
-        const resp = await fetch(ACTIVE_CSV_URL + '&_t=' + Date.now());
-        if (!resp.ok) {
-          handleFetchFailure();
-          return false;
+        // Primary: the combined SOLA/Midwest/East Coast sheet (Event tag already at col 19).
+        const combined = await fetchOneCSV(ACTIVE_CSV_URL);
+
+        // Secondary: the standalone Gen Together 2026 sheet, if configured.
+        // Tagged + padded so its rows merge cleanly with the combined set.
+        let symposium = [];
+        if (symposiumConfigured()) {
+          try {
+            const symRaw = await fetchOneCSV(SYMPOSIUM_CSV_URL);
+            symposium = symRaw.map(normalizeSymposiumRow);
+          } catch (symErr) {
+            console.warn('Symposium CSV fetch failed (continuing with combined only):', symErr);
+          }
         }
-        const text = await resp.text();
-        rawRows = parseCSV(text);
+
+        rawRows = combined.concat(symposium);
         lastFetchOk = true;
         lastFetchTime = new Date();
         document.getElementById('statusText').textContent = 'Live';
